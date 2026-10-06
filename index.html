@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#050505">
+<title>HEIAN Assistant</title>
+
+<style>
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    min-height: 100vh;
+    background:
+        radial-gradient(circle at 50% 45%, #123b39 0%, #071514 20%, #030606 55%, #000 100%);
+    color: white;
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display",
+                 "Segoe UI", sans-serif;
+    overflow: hidden;
+}
+
+.app {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 30px;
+    position: relative;
+}
+
+.brand {
+    position: absolute;
+    top: 35px;
+    left: 35px;
+    letter-spacing: 5px;
+    font-size: 14px;
+    opacity: .8;
+}
+
+.status {
+    position: absolute;
+    top: 38px;
+    right: 35px;
+    font-size: 12px;
+    letter-spacing: 2px;
+    color: #19d3c5;
+}
+
+.core {
+    width: 190px;
+    height: 190px;
+    border-radius: 50%;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background:
+        radial-gradient(circle, #19d3c5 0%, #0c817b 20%, #063b39 42%, #020909 70%);
+    box-shadow:
+        0 0 25px rgba(25,211,197,.45),
+        0 0 80px rgba(25,211,197,.18),
+        inset 0 0 35px rgba(255,255,255,.08);
+    transition: .4s ease;
+}
+
+.core::before,
+.core::after {
+    content: "";
+    position: absolute;
+    border-radius: 50%;
+    border: 1px solid rgba(25,211,197,.4);
+}
+
+.core::before {
+    width: 235px;
+    height: 235px;
+}
+
+.core::after {
+    width: 280px;
+    height: 280px;
+    border-color: rgba(25,211,197,.12);
+}
+
+.core.listening {
+    animation: pulse 1.2s infinite;
+    box-shadow:
+        0 0 35px rgba(25,211,197,.8),
+        0 0 110px rgba(25,211,197,.35);
+}
+
+@keyframes pulse {
+    0%,100% {
+        transform: scale(1);
+    }
+    50% {
+        transform: scale(1.06);
+    }
+}
+
+.inner {
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    background: rgba(255,255,255,.9);
+    box-shadow: 0 0 30px rgba(255,255,255,.35);
+}
+
+.message {
+    margin-top: 85px;
+    text-align: center;
+    min-height: 75px;
+    max-width: 90%;
+}
+
+.message h1 {
+    font-size: 21px;
+    font-weight: 500;
+    letter-spacing: 1px;
+}
+
+.message p {
+    margin-top: 10px;
+    color: rgba(255,255,255,.55);
+    font-size: 14px;
+}
+
+.permission {
+    position: absolute;
+    bottom: 35px;
+    border: 1px solid rgba(25,211,197,.35);
+    background: rgba(25,211,197,.08);
+    color: white;
+    padding: 12px 20px;
+    border-radius: 30px;
+    font-size: 13px;
+    cursor: pointer;
+    backdrop-filter: blur(10px);
+}
+
+.permission:hover {
+    background: rgba(25,211,197,.16);
+}
+</style>
+</head>
+
+<body>
+
+<div class="app">
+
+    <div class="brand">HEIAN</div>
+
+    <div class="status" id="status">
+        SYSTEM READY
+    </div>
+
+    <div class="core" id="core">
+        <div class="inner"></div>
+    </div>
+
+    <div class="message">
+        <h1 id="message">Sistem hazır.</h1>
+        <p id="submessage">Mikrofon izni bekleniyor.</p>
+    </div>
+
+    <button class="permission" id="permissionButton">
+        Mikrofonu Etkinleştir
+    </button>
+
+</div>
+
+<script>
+
+const core = document.getElementById("core");
+const statusText = document.getElementById("status");
+const message = document.getElementById("message");
+const submessage = document.getElementById("submessage");
+const permissionButton = document.getElementById("permissionButton");
+
+let recognition;
+let listening = false;
+let active = false;
+
+function speak(text) {
+
+    if (!("speechSynthesis" in window)) {
+        return;
+    }
+
+    window.speechSynthesis.cancel();
+
+    const voice = new SpeechSynthesisUtterance(text);
+
+    voice.lang = "tr-TR";
+    voice.rate = 0.95;
+    voice.pitch = 0.9;
+    voice.volume = 1;
+
+    window.speechSynthesis.speak(voice);
+}
+
+function setupRecognition() {
+
+    const SpeechRecognition =
+        window.SpeechRecognition ||
+        window.webkitSpeechRecognition;
+
+    if (!SpeechRecognition) {
+
+        message.textContent = "Tarayıcı desteklenmiyor.";
+        submessage.textContent =
+            "Bu özellik için desteklenen bir tarayıcı kullanın.";
+
+        return;
+    }
+
+    recognition = new SpeechRecognition();
+
+    recognition.lang = "tr-TR";
+    recognition.continuous = true;
+    recognition.interimResults = true;
+
+    recognition.onstart = function() {
+
+        listening = true;
+
+        statusText.textContent = "LISTENING";
+        message.textContent = "Dinliyorum.";
+        submessage.textContent =
+            '"JARVIS" diyerek beni uyandırabilirsiniz.';
+
+        core.classList.add("listening");
+    };
+
+    recognition.onresult = function(event) {
+
+        let finalText = "";
+
+        for (
+            let i = event.resultIndex;
+            i < event.results.length;
+            i++
+        ) {
+
+            const text =
+                event.results[i][0].transcript
+                .trim()
+                .toLowerCase();
+
+            if (event.results[i].isFinal) {
+                finalText += text + " ";
+            }
+        }
+
+        if (!finalText) return;
+
+        console.log("Algılanan:", finalText);
+
+        if (
+            finalText.includes("jarvis") ||
+            finalText.includes("cerviz") ||
+            finalText.includes("cervis")
+        ) {
+
+            active = true;
+
+            message.textContent = "Dinliyorum.";
+            submessage.textContent =
+                "Komutunuzu söyleyin.";
+
+            speak("Dinliyorum.");
+        }
+
+        else if (active) {
+
+            active = false;
+
+            message.textContent =
+                "Komut alındı.";
+
+            submessage.textContent =
+                finalText;
+
+            /*
+             * BURASI İLERİDE JARVIS BEYNİNE
+             * BAĞLANACAK.
+             */
+
+            speak(
+                "Komutunuzu aldım. " +
+                "HEIAN sistemine bağlandığımda " +
+                "gerçek veriler üzerinden işlem yapacağım."
+            );
+        }
+    };
+
+    recognition.onerror = function(event) {
+
+        console.log("Speech error:", event.error);
+
+        if (event.error === "not-allowed") {
+
+            message.textContent =
+                "Mikrofon izni gerekli.";
+
+            submessage.textContent =
+                "Tarayıcı ayarlarından mikrofon izni verin.";
+        }
+    };
+
+    recognition.onend = function() {
+
+        listening = false;
+        core.classList.remove("listening");
+
+        /*
+         * Sistem kapanmasın.
+         * Tarayıcı izin verdiği sürece yeniden başlat.
+         */
+
+        if (recognition) {
+
+            setTimeout(() => {
+
+                try {
+                    recognition.start();
+                } catch(e) {}
+
+            }, 500);
+        }
+    };
+}
+
+permissionButton.addEventListener("click", async function() {
+
+    try {
+
+        await navigator.mediaDevices.getUserMedia({
+            audio: true
+        });
+
+        permissionButton.style.display = "none";
+
+        message.textContent =
+            "Mikrofon aktif.";
+
+        submessage.textContent =
+            '"JARVIS" demenizi bekliyorum.';
+
+        statusText.textContent =
+            "SYSTEM ONLINE";
+
+        setupRecognition();
+
+        recognition.start();
+
+        speak("Sistem hazır.");
+
+    } catch(error) {
+
+        message.textContent =
+            "Mikrofon izni verilmedi.";
+
+        submessage.textContent =
+            "Mikrofon erişimine izin vermelisiniz.";
+    }
+
+});
+
+</script>
+
+</body>
+</html>
